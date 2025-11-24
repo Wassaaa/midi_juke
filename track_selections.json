@@ -151,7 +151,8 @@
         2,
         3,
         5,
-        6
+        6,
+        8
     ],
     "(Kino Geno) Gotye - Somebody that I Used to Know.mid": [
         1,
@@ -197,5 +198,16 @@
         2,
         3,
         5
+    ],
+    "(Kino Geno) Michael Buble - The Christmas Sweater.mid": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+    ],
+    "(Nozomi Tenma) Imagine Dragons - Believer.mid": [
+        1
     ]
 }
