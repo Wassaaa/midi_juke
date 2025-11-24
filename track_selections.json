@@ -163,13 +163,16 @@
         6,
         8
     ],
-    "(Kino Geno) Green Day - American Idiot.mid": [
-        1,
-        2,
-        3,
-        4,
-        5
-    ],
+    "(Kino Geno) Green Day - American Idiot.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5
+        ],
+        "speed": 1.0
+    },
     "(Kino Geno) HUNTR_X (KPop Demon Hunters) - Golden.mid": [
         1,
         2,
@@ -209,5 +212,44 @@
     ],
     "(Nozomi Tenma) Imagine Dragons - Believer.mid": [
         1
-    ]
+    ],
+    "(Kino Geno) Imagine Dragons - Believer.mid": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+    ],
+    "(Kino Geno) Katy Perry - Firework.mid": [
+        1,
+        2,
+        3,
+        6
+    ],
+    "(Kino Geno) Linkin Park - Breaking the Habit.mid": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "(Kino Geno) Linkin Park - Numb.mid": [
+        1,
+        2,
+        3,
+        4,
+        5
+    ],
+    "(Debra VanHouten) Yiruma \u2013 River Flows in You (Solo).mid": {
+        "speed": 1.1,
+        "tracks": [
+            0
+        ]
+    },
+    "(Debra Vanhouten) Braveheart - Theme arrangement.mid": {
+        "speed": 1.1,
+        "tracks": [
+            0
+        ]
+    }
 }

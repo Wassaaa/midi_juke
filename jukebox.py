@@ -18,8 +18,12 @@ CONFIG = {
     "midi_root": "midis",         
     "window_title": "Where Winds Meet", 
     "db_file": "track_selections.json",
+    
+    # Input Tuning
     "note_hold_time": 0,          
     "chord_strum_delay": 0.002,
+    
+    # Controls
     "speed_step": 0.1,            
     "seek_step": 10.0,
 }
@@ -28,16 +32,40 @@ CONFIG = {
 # 2. APP STATE
 # ============================================================================
 state = {
-    "paused": False, "muted": False, "looping": False,
-    "running": True, "restart_flag": False, "request_selection": False, "request_track_mixer": False, 
-    "current_index": 0, "playlist": [], "current_folder_name": "ALL", 
-    "playback_speed": 1.0, "manual_track_indices": None, "resume_seek_seconds": 0.0,
-    "track_db": {}, "game_hwnd": None,
-    "dashboard": {"st": "STOPPED", "bar": "", "curr": "00:00", "tot": "00:00", "spd": "1.0", "song": "", "mixer": ""}
+    # Flags
+    "paused": False,
+    "muted": False,
+    "muted_by_focus": False,
+    "looping": False,
+    "running": True,
+    
+    # Triggers
+    "restart_flag": False,        
+    "request_selection": False,   
+    "request_track_mixer": False, 
+    
+    # Playback Data
+    "current_index": 0,
+    "playlist": [],               
+    "current_folder_name": "ALL", 
+    "playback_speed": 1.0,
+    "manual_track_indices": None, 
+    "resume_seek_seconds": 0.0,
+    
+    # Persistence
+    "track_db": {}, 
+    "game_hwnd": None,
+    
+    # UI Buffer
+    "dashboard": {
+        "st": "STOPPED", "bar": "", 
+        "curr": "00:00", "tot": "00:00", 
+        "spd": "1.0", "song": "", "mixer": ""
+    }
 }
 
 # ============================================================================
-# 3. GENERAL MIDI INSTRUMENT LIST (0-127)
+# 3. GENERAL MIDI INSTRUMENT LIST
 # ============================================================================
 GM_INSTRUMENTS = {
     0: "Acoustic Grand Piano", 1: "Bright Acoustic Piano", 2: "Electric Grand Piano", 3: "Honky-tonk Piano",
@@ -104,26 +132,35 @@ def press_atomic(modifier, key_char):
     def pm(msg, w, l):
         win32api.PostMessage(hwnd, msg, w, l)
 
+    # Send Mod Down
     if modifier == 'shift': 
         pm(win32con.WM_KEYDOWN, 0xA0, 0x002A0001) # VK_LSHIFT, Scan 0x2A
     elif modifier == 'ctrl': 
         pm(win32con.WM_KEYDOWN, 0xA2, 0x001D0001) # VK_LCONTROL, Scan 0x1D
 
+    # Send Key Down
     lparam_down = 1 | (sc_key << 16)
     pm(win32con.WM_KEYDOWN, vk_key, lparam_down)
 
     if CONFIG["note_hold_time"] > 0: time.sleep(CONFIG["note_hold_time"])
 
+    # Send Key Up
     lparam_up = 1 | (sc_key << 16) | 0xC0000001
     pm(win32con.WM_KEYUP, vk_key, lparam_up)
 
+    # Send Mod Up
     if modifier == 'shift': pm(win32con.WM_KEYUP, 0xA0, 0xC02A0001)
     elif modifier == 'ctrl': pm(win32con.WM_KEYUP, 0xA2, 0xC01D0001)
 
+# ============================================================================
+# 5. WINDOW & FOCUS
+# ============================================================================
 def focus_terminal():
     try:
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        if hwnd: win32gui.SetForegroundWindow(hwnd)
+        if hwnd: 
+            if win32gui.IsIconic(hwnd): win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(hwnd)
     except: pass
 
 def get_game_hwnd():
@@ -134,12 +171,41 @@ def get_game_hwnd():
         if CONFIG["window_title"].lower() in title.lower(): return hwnd
     return None
 
+def focus_game_window():
+    hwnd = get_game_hwnd()
+    if hwnd:
+        try:
+            if win32gui.IsIconic(hwnd): win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+            win32gui.SetForegroundWindow(hwnd)
+            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+        except: pass
+
+def minimize_game_window():
+    hwnd = get_game_hwnd()
+    if hwnd:
+        try: win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+        except: pass
+
+def handle_focus_state():
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        title = win32gui.GetWindowText(hwnd)
+        is_focused = CONFIG["window_title"].lower() in title.lower()
+        state["muted_by_focus"] = not is_focused
+    except: pass
+
+# ============================================================================
+# 6. HOTKEYS & CONTROLS
+# ============================================================================
 def next_song():
     if not state["playlist"]: return
-    state["current_index"] = (state["current_index"] + 1) % len(state["playlist"]); state["restart_flag"] = True; state["paused"] = False; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0
+    state["current_index"] = (state["current_index"] + 1) % len(state["playlist"])
+    state["restart_flag"] = True; state["paused"] = False; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0
 def prev_song():
     if not state["playlist"]: return
-    state["current_index"] = (state["current_index"] - 1) % len(state["playlist"]); state["restart_flag"] = True; state["paused"] = False; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0
+    state["current_index"] = (state["current_index"] - 1) % len(state["playlist"])
+    state["restart_flag"] = True; state["paused"] = False; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0
 
 def toggle_pause(): state["paused"] = not state["paused"]
 def toggle_mute(): state["muted"] = not state["muted"]
@@ -150,13 +216,24 @@ def trigger_mixer(): state["request_track_mixer"] = True
 def speed_up(): state["playback_speed"] = min(state["playback_speed"] + CONFIG["speed_step"], 10.0)
 def speed_down(): state["playback_speed"] = max(state["playback_speed"] - CONFIG["speed_step"], 0.1)
 
-keyboard.add_hotkey('right', next_song); keyboard.add_hotkey('left', prev_song)
-keyboard.add_hotkey('up', speed_up); keyboard.add_hotkey('down', speed_down)
-keyboard.add_hotkey('F3', toggle_pause); keyboard.add_hotkey('F4', stop_script)
-keyboard.add_hotkey('F5', trigger_menu); keyboard.add_hotkey('F6', toggle_mute)
-keyboard.add_hotkey('F7', trigger_mixer); keyboard.add_hotkey('l', toggle_loop)
+keyboard.add_hotkey('right', next_song)
+keyboard.add_hotkey('left', prev_song)
+keyboard.add_hotkey('up', speed_up)
+keyboard.add_hotkey('down', speed_down)
+keyboard.add_hotkey('F3', toggle_pause)
+keyboard.add_hotkey('F4', stop_script)
+keyboard.add_hotkey('F5', trigger_menu)
+keyboard.add_hotkey('F6', toggle_mute)
+keyboard.add_hotkey('F7', trigger_mixer)
+keyboard.add_hotkey('l', toggle_loop)
 
-def format_time(seconds): mins = int(seconds // 60); secs = int(seconds % 60); return f"{mins:02d}:{secs:02d}"
+# ============================================================================
+# 7. UI HELPERS
+# ============================================================================
+def format_time(seconds):
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins:02d}:{secs:02d}"
 
 def update_dashboard(current_sec, total_sec, is_seeking=False):
     if total_sec == 0: total_sec = 1
@@ -167,6 +244,7 @@ def update_dashboard(current_sec, total_sec, is_seeking=False):
     if is_seeking: st = "⏩ SEEKING    "
     elif state["paused"]: st = "⏸  PAUSED     "
     elif state["muted"]: st = "🔇 MUTED      "
+    elif state["muted_by_focus"]: st = "⚠️  BACKGROUND "
     elif state["looping"]: st = "🔁 LOOPING    "
     else: st = "▶  PLAYING    "
     
@@ -178,12 +256,16 @@ def update_dashboard(current_sec, total_sec, is_seeking=False):
 
 def print_dashboard():
     d = state["dashboard"]
-    sys.stdout.write(f"\r{d['st']} | {d['bar']} | {d['curr']} / {d['tot']} | Spd: {d['spd']}x")
+    sys.stdout.write(f"\r{d['st']} | {d['bar']} | {d['curr']} / {d['tot']} | Spd: {d['spd']}x   ")
     sys.stdout.flush()
 
+# ============================================================================
+# 8. FILE & TRACK LOGIC
+# ============================================================================
 def get_subfolders():
     if not os.path.exists(CONFIG["midi_root"]): os.makedirs(CONFIG["midi_root"])
     return sorted([d for d in os.listdir(CONFIG["midi_root"]) if os.path.isdir(os.path.join(CONFIG["midi_root"], d))])
+
 def scan_files(subfolder=None):
     file_list = []
     root_path = CONFIG["midi_root"]
@@ -211,14 +293,28 @@ def get_track_info(mid):
         if note_count > 0: info.append({'index': i, 'name': track.name.strip(), 'notes': note_count, 'inst': instrument, 'drum': is_drum})
     return info
 
+# ============================================================================
+# 9. MENUS
+# ============================================================================
 def run_track_mixer(full_path):
+    minimize_game_window()
+    focus_terminal()
     time.sleep(0.2)
+    
     try: mid = mido.MidiFile(full_path)
     except: return
+    
     tracks = get_track_info(mid)
     fname = os.path.basename(full_path)
-    if fname in state["track_db"]:
-        selected = set(state["track_db"][fname])
+    
+    # Load selection
+    selected = set()
+    if state["manual_track_indices"]:
+        selected = set(state["manual_track_indices"])
+    elif fname in state["track_db"]:
+        data = state["track_db"][fname]
+        if isinstance(data, list): selected = set(data)
+        elif isinstance(data, dict): selected = set(data.get("tracks", []))
     else:
         best = max(tracks, key=lambda t: t['notes'])['index']
         selected = {best}
@@ -240,35 +336,70 @@ def run_track_mixer(full_path):
                 if idx in selected: selected.remove(idx)
                 else: selected.add(idx)
         except: pass
-    state["track_db"][fname] = list(selected); save_track_db()
+    
+    # Save Data
+    if fname not in state["track_db"] or isinstance(state["track_db"][fname], list):
+        state["track_db"][fname] = {}
+    
+    state["track_db"][fname]["tracks"] = list(selected)
+    # Preserve speed
+    if "speed" not in state["track_db"][fname]:
+        state["track_db"][fname]["speed"] = state["playback_speed"]
+        
+    save_track_db()
     state["manual_track_indices"] = list(selected)
-    state["restart_flag"] = True # Restart to apply changes
+    state["restart_flag"] = True 
 
 def run_selection_menu():
+    minimize_game_window()
+    focus_terminal()
     time.sleep(0.2)
+    
     os.system('cls' if os.name == 'nt' else 'clear')
     subfolders = get_subfolders()
     print("="*50); print("       📂 PLAYLIST SELECTION"); print("="*50); print(f"[1]  🔥 ALL SONGS (Master)")
     for i, folder in enumerate(subfolders): print(f"[{i+2}]  📂 {folder}")
     try:
         user_input = input("\nSelect Folder # > ")
+        # If empty input, just cancel out and do NOTHING
         if not user_input: return
+        
         choice = int(user_input)
-        new_playlist = []; folder_name = "ALL"
-        if choice == 1: new_playlist = scan_files(None)
-        elif 2 <= choice <= len(subfolders) + 1: folder_name = subfolders[choice - 2]; new_playlist = scan_files(folder_name)
+        temp_playlist = []; temp_folder_name = "ALL"
+        
+        if choice == 1: temp_playlist = scan_files(None)
+        elif 2 <= choice <= len(subfolders) + 1: 
+            temp_folder_name = subfolders[choice - 2]
+            temp_playlist = scan_files(temp_folder_name)
         else: return
-        if new_playlist:
-            state["playlist"] = new_playlist; state["current_folder_name"] = folder_name; state["current_index"] = 0
-            os.system('cls' if os.name == 'nt' else 'clear'); print(f"--- SONGS IN: {folder_name} ---")
-            for i, full_path in enumerate(state["playlist"]): print(f"[{i+1}] {os.path.basename(full_path)}")
-            si = input("\nStart Song # > ")
-            if si.strip(): 
+
+        if temp_playlist:
+            # Show songs PREVIEW
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print(f"--- SONGS IN: {temp_folder_name} ---")
+            for i, full_path in enumerate(temp_playlist): 
+                print(f"[{i+1}] {os.path.basename(full_path)}")
+            
+            print("\n(Enter number to Play, or leave empty to Cancel)")
+            si = input("Start Song # > ")
+            
+            # ONLY commit if user actually picks a song or forces start
+            if si.strip():
+                state["playlist"] = temp_playlist
+                state["current_folder_name"] = temp_folder_name
                 state["current_index"] = int(si) - 1
                 state["restart_flag"] = True
-                state["resume_seek_seconds"] = 0.0 
+                state["resume_seek_seconds"] = 0.0
+                state["manual_track_indices"] = None
+            else:
+                print("Selection Cancelled.")
+                time.sleep(0.5)
+                
     except: pass
 
+# ============================================================================
+# 10. PLAYBACK LOOP
+# ============================================================================
 def playback_worker():
     while state["running"]:
         if not state["playlist"]: time.sleep(1); continue
@@ -277,28 +408,50 @@ def playback_worker():
         try: mid = mido.MidiFile(full_path)
         except: time.sleep(1); continue
 
-        # ctypes.windll.kernel32.SetConsoleTitleW(f"Bard Bot - {os.path.basename(full_path)}") # Can keep or remove
         events_by_time = {}; tracks_to_play = []
         fname = os.path.basename(full_path)
         state["dashboard"]["song"] = fname
         
         total_playable_tracks = sum(1 for t in mid.tracks if sum(1 for m in t if m.type == 'note_on' and m.velocity > 0) > 0)
 
+        # --- LOAD SPEED & TRACKS ---
+        state["playback_speed"] = 1.0 # Default
+        current_track_indices = []
+
         if fname in state["track_db"]:
-            saved_indices = state["track_db"][fname]
-            for i in saved_indices:
-                if i < len(mid.tracks): tracks_to_play.append(mid.tracks[i])
-            track_source_name = "Manual"
+            data = state["track_db"][fname]
+            saved_indices = []
+            if isinstance(data, list): saved_indices = data
+            elif isinstance(data, dict):
+                saved_indices = data.get("tracks", [])
+                state["playback_speed"] = data.get("speed", 1.0)
+            
+            # Safety Fallback if DB has empty list (fix for the bug)
+            if not saved_indices:
+                best = 0; maxn = 0
+                for i, t in enumerate(mid.tracks):
+                    c = sum(1 for m in t if m.type == 'note_on' and m.velocity > 0)
+                    if c > maxn: maxn, best = c, i
+                current_track_indices = [best]
+                track_source_name = "Auto (Fixed)"
+            else:
+                current_track_indices = saved_indices
+                track_source_name = "Saved Mix"
         else:
             best = 0; maxn = 0
             for i, t in enumerate(mid.tracks):
                 c = sum(1 for m in t if m.type == 'note_on' and m.velocity > 0)
                 if c > maxn: maxn, best = c, i
-            tracks_to_play.append(mid.tracks[best])
+            current_track_indices = [best]
             track_source_name = f"Auto (Track {best})"
         
+        # Build track objects
+        for i in current_track_indices:
+            if i < len(mid.tracks): tracks_to_play.append(mid.tracks[i])
+            
         state["dashboard"]["mixer"] = f"{track_source_name} | Active: {len(tracks_to_play)} / {total_playable_tracks} Tracks"
 
+        # Merge Events
         for track in tracks_to_play:
             curr = 0
             for msg in track:
@@ -307,7 +460,6 @@ def playback_worker():
                     if curr not in events_by_time: events_by_time[curr] = []
                     events_by_time[curr].append(msg.note)
 
-        # Get HWND once per song
         state["game_hwnd"] = get_game_hwnd()
         
         sorted_times = sorted(events_by_time.keys())
@@ -319,22 +471,29 @@ def playback_worker():
         for t in sorted_times:
             if state["restart_flag"] or not state["running"]: break
             
-            # Handle Mixer Pause
+            # Mixer Interruption
             if state["request_track_mixer"]:
                 state["resume_seek_seconds"] = accumulated_time
                 while state["request_track_mixer"] and state["running"]: time.sleep(0.1)
-                break # Break loop to reload tracks
+                break 
 
             delta_ticks = t - last_ticks
             if delta_ticks > 0:
                 real_wait = mido.tick2second(delta_ticks, mid.ticks_per_beat, tempo)
                 accumulated_time += real_wait
+                
+                # --- SEEKING ---
                 if accumulated_time < state["resume_seek_seconds"]:
                     if int(accumulated_time * 100) % 5 == 0: update_dashboard(accumulated_time, total_duration, is_seeking=True)
                     last_ticks = t; continue 
 
-                if keyboard.is_pressed('page down'): state["resume_seek_seconds"] = min(accumulated_time + CONFIG["seek_step"], total_duration); break
-                if keyboard.is_pressed('page up'): state["resume_seek_seconds"] = max(accumulated_time - CONFIG["seek_step"], 0.0); break
+                # --- CHECK KEYBOARD SEEK ---
+                if keyboard.is_pressed('page down'): 
+                    state["resume_seek_seconds"] = min(accumulated_time + CONFIG["seek_step"], total_duration)
+                    state["restart_flag"] = True; break
+                if keyboard.is_pressed('page up'): 
+                    state["resume_seek_seconds"] = max(accumulated_time - CONFIG["seek_step"], 0.0)
+                    state["restart_flag"] = True; break
 
                 start_wait = time.time()
                 while True:
@@ -342,25 +501,23 @@ def playback_worker():
                         update_dashboard(accumulated_time, total_duration); time.sleep(0.1)
                         if state["restart_flag"]: break
                         if state["request_track_mixer"]: break
-                        if keyboard.is_pressed('page down'): state["resume_seek_seconds"] = min(accumulated_time + CONFIG["seek_step"], total_duration); break
-                        if keyboard.is_pressed('page up'): state["resume_seek_seconds"] = max(accumulated_time - CONFIG["seek_step"], 0.0); break
+                        if keyboard.is_pressed('page down'): state["resume_seek_seconds"] = min(accumulated_time + CONFIG["seek_step"], total_duration); state["restart_flag"] = True; break
+                        if keyboard.is_pressed('page up'): state["resume_seek_seconds"] = max(accumulated_time - CONFIG["seek_step"], 0.0); state["restart_flag"] = True; break
                     
                     if state["restart_flag"] or state["request_track_mixer"]: break
-                    if keyboard.is_pressed('page down') or keyboard.is_pressed('page up'): break
 
                     elapsed = time.time() - start_wait
                     target_wait = real_wait / state["playback_speed"]
                     if elapsed >= target_wait: break
-                    if state["restart_flag"] or not state["running"]: break
+                    
+                    if keyboard.is_pressed('page down'): state["resume_seek_seconds"] = min(accumulated_time + CONFIG["seek_step"], total_duration); state["restart_flag"] = True; break
+                    if keyboard.is_pressed('page up'): state["resume_seek_seconds"] = max(accumulated_time - CONFIG["seek_step"], 0.0); state["restart_flag"] = True; break
                     
                     update_dashboard(accumulated_time, total_duration); time.sleep(0.005)
                 
                 if state["restart_flag"] or state["request_track_mixer"]: break
-                if keyboard.is_pressed('page down') or keyboard.is_pressed('page up'): break
 
-            if state["restart_flag"] or not state["running"]: break
-            if state["request_track_mixer"]: break
-
+            # --- PLAY NOTES ---
             for note in events_by_time[t]:
                 if note in NOTE_MAP:
                     if not state["muted"]:
@@ -370,32 +527,41 @@ def playback_worker():
             last_ticks = t
         
         if not state["restart_flag"] and not state["request_track_mixer"] and state["running"]:
-             # Song finished naturally
              state["resume_seek_seconds"] = 0.0
              if not state["looping"]: next_song()
              time.sleep(1)
         
+        # Save speed changes (Fixed Logic)
+        if state["playback_speed"] != 1.0:
+             if fname not in state["track_db"] or isinstance(state["track_db"][fname], list):
+                 state["track_db"][fname] = {}
+             
+             state["track_db"][fname]["speed"] = state["playback_speed"]
+             
+             # IMPORTANT: Ensure tracks are saved too, otherwise next load sees empty tracks
+             if "tracks" not in state["track_db"][fname] or not state["track_db"][fname]["tracks"]:
+                 state["track_db"][fname]["tracks"] = current_track_indices
+             
+             save_track_db()
+
         state["restart_flag"] = False
 
 def main():
     os.system("") 
     load_track_db()
+    # INITIAL STATE: Empty Playlist so we force menu
+    state["playlist"] = [] 
     
-    # Start with selection menu
-    run_selection_menu()
-    if not state["playlist"]: 
-        # Fallback if user cancelled or no files
-        state["playlist"] = scan_files(None)
-    
-    if not state["playlist"]: print(f"No files in '{CONFIG['midi_root']}'!"); return
-    
-    # Start playback thread
+    # Start Playback Thread
     t = threading.Thread(target=playback_worker, daemon=True)
     t.start()
 
     print("="*80); print("🎵 JUKEBOX STARTED"); print("="*80)
     print("⌨️  F3:Pause F4:Stop F5:Menu F6:Mute F7:Mixer L:Loop | PgUp/Dn: Seek | Arrows: Nav")
-    sys.stdout.write("\033[?25l")
+    sys.stdout.write("\033[?25l") # Hide Cursor
+
+    # Force Menu on Start
+    state["request_selection"] = True
 
     last_song = ""
     while state["running"]:
@@ -403,17 +569,20 @@ def main():
             state["request_selection"] = False
             focus_terminal()
             run_selection_menu()
-            last_song = "" # Force redraw
+            last_song = "" 
 
         elif state["request_track_mixer"]:
             focus_terminal()
             run_track_mixer(state["playlist"][state["current_index"]])
             state["request_track_mixer"] = False 
-            last_song = "" # Force redraw
+            last_song = "" 
 
         else:
+            # Main Dashboard Loop
+            handle_focus_state()
             curr_song = state["dashboard"]["song"]
-            if curr_song != last_song:
+            
+            if curr_song != last_song and curr_song:
                 last_song = curr_song
                 os.system('cls' if os.name == 'nt' else 'clear')
                 print("="*80); print(f"🎵 NOW PLAYING: {curr_song}")
@@ -422,7 +591,8 @@ def main():
                 print("⌨️  F3:Pause F4:Stop F5:Menu F6:Mute F7:Mixer L:Loop | PgUp/Dn: Seek | Arrows: Nav"); print("="*80)
                 sys.stdout.write("\033[?25l"); sys.stdout.write("\033[5A") 
             
-            print_dashboard()
+            if curr_song:
+                print_dashboard()
             time.sleep(0.1)
     
     sys.stdout.write("\033[?25h")
