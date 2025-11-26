@@ -39,30 +39,36 @@
         5,
         7
     ],
-    "Poison.mid": [
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        12,
-        13
-    ],
+    "Poison.mid": {
+        "tracks": [
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            12,
+            13
+        ],
+        "speed": 1.4000000000000004
+    },
     "(Maeven Serrou) Rihanna - Umbrella.mid": [
         1,
         3,
         4,
         5
     ],
-    "(Eltana Qalaba'r) Eminem - Hailie's Song.mid": [
-        1,
-        2,
-        4,
-        5,
-        6
-    ],
+    "(Eltana Qalaba'r) Eminem - Hailie's Song.mid": {
+        "tracks": [
+            1,
+            2,
+            4,
+            5,
+            6
+        ],
+        "speed": 1.0
+    },
     "(Paisa Mio) DDU DU DDU DU - Blackpink.mid": [
         0,
         1,
@@ -146,14 +152,17 @@
         5,
         6
     ],
-    "(Kino Geno) Frozen - Let It Go.mid": [
-        1,
-        2,
-        3,
-        5,
-        6,
-        8
-    ],
+    "(Kino Geno) Frozen - Let It Go.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            8
+        ],
+        "speed": 1.0
+    },
     "(Kino Geno) Gotye - Somebody that I Used to Know.mid": [
         1,
         2,
@@ -173,18 +182,24 @@
         ],
         "speed": 1.0
     },
-    "(Kino Geno) HUNTR_X (KPop Demon Hunters) - Golden.mid": [
-        1,
-        2,
-        3,
-        4,
-        5
-    ],
-    "Stan.mid": [
-        2,
-        3,
-        4
-    ],
+    "(Kino Geno) HUNTR_X (KPop Demon Hunters) - Golden.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5
+        ],
+        "speed": 1.0
+    },
+    "Stan.mid": {
+        "speed": 0.7000000000000001,
+        "tracks": [
+            2,
+            3,
+            4
+        ]
+    },
     "Blue_Da_Ba_Dee.mid": [
         2,
         3,
@@ -202,14 +217,17 @@
         3,
         5
     ],
-    "(Kino Geno) Michael Buble - The Christmas Sweater.mid": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-    ],
+    "(Kino Geno) Michael Buble - The Christmas Sweater.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+        ],
+        "speed": 1.0
+    },
     "(Nozomi Tenma) Imagine Dragons - Believer.mid": [
         1
     ],
@@ -233,13 +251,18 @@
         3,
         4
     ],
-    "(Kino Geno) Linkin Park - Numb.mid": [
-        1,
-        2,
-        3,
-        4,
-        5
-    ],
+    "(Kino Geno) Linkin Park - Numb.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            7,
+            8
+        ],
+        "speed": 1.0
+    },
     "(Debra VanHouten) Yiruma \u2013 River Flows in You (Solo).mid": {
         "speed": 1.1,
         "tracks": [
@@ -247,9 +270,263 @@
         ]
     },
     "(Debra Vanhouten) Braveheart - Theme arrangement.mid": {
-        "speed": 1.1,
+        "speed": 1.0,
         "tracks": [
             0
         ]
+    },
+    "(Debra Vanhouten) Toto - Africa.mid": {
+        "speed": 0.8,
+        "tracks": [
+            0
+        ]
+    },
+    "Friends - TV poly.mid": {
+        "speed": 1.3000000000000003,
+        "tracks": [
+            0
+        ]
+    },
+    "Avril.MID": {
+        "tracks": [
+            1,
+            2,
+            3,
+            5
+        ],
+        "speed": 1.1
+    },
+    "BLONDIE_MARIA_TOPLIST_01.MID": {
+        "tracks": [
+            1,
+            2,
+            3,
+            8,
+            11
+        ],
+        "speed": 1.0
+    },
+    "COLDPLAY-the_scientist.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            9
+        ],
+        "speed": 1.0
+    },
+    "Darude - Sandstorm.MID": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            8,
+            12
+        ],
+        "speed": 1.0
+    },
+    "Freestyler - Bomfunk MCs.mid": {
+        "tracks": [
+            0
+        ],
+        "speed": 1.0
+    },
+    "Mortal.MID": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+        ],
+        "speed": 1.0
+    },
+    "Saw Wawe.MID": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5
+        ],
+        "speed": 1.0
+    },
+    "Staying Alive.mid": {
+        "tracks": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            7
+        ],
+        "speed": 1.0
+    },
+    "WWST.MID": {
+        "tracks": [
+            3,
+            4,
+            5,
+            6,
+            9,
+            10,
+            13,
+            16
+        ],
+        "speed": 1.0
+    },
+    "are_you_ready_for_this.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            9,
+            12
+        ],
+        "speed": 1.0
+    },
+    "barbie_girl.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            10,
+            11
+        ],
+        "speed": 1.0
+    },
+    "cantgetyououtofmyhead_kylieminogue.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14
+        ],
+        "speed": 1.0
+    },
+    "inthemood.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+        ],
+        "speed": 0.6000000000000001
+    },
+    "shes_electric.mid": {
+        "tracks": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+        ],
+        "speed": 1.0
+    },
+    "(Debra Vanhouten) Tom Petty - Free Fallin'.mid": {
+        "tracks": [
+            0
+        ],
+        "speed": 1.0
+    },
+    "(Eltana Qalaba'r) Metallica - Creeping Death.mid": {
+        "tracks": [
+            1
+        ],
+        "speed": 1.0
+    },
+    "(Kino Geno) Steven Universe - Other Friends.mid": {
+        "speed": 1.2000000000000002,
+        "tracks": [
+            2
+        ]
+    },
+    "(Kino Geno) Mark Ronson - Uptown Funk (Ft. Bruno Mars).mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            7,
+            8
+        ],
+        "speed": 0.8
+    },
+    "(Kino Geno) OneRepublic - Counting Stars.mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            7,
+            8
+        ],
+        "speed": 1.0
+    },
+    "(Kino Geno) Venga Boys - We Like To Party (Six Flags Commercial Song).mid": {
+        "tracks": [
+            1,
+            2,
+            3,
+            4,
+            5
+        ],
+        "speed": 1.0
+    },
+    "(Debra VanHouten) Evanescence \u2013 Hello (Solo).mid": {
+        "tracks": [
+            1
+        ],
+        "speed": 1.2000000000000002
+    },
+    "(Debra VanHouten) Gerry Rafferty - Baker Street (Solo).mid": {
+        "speed": 1.2000000000000002,
+        "tracks": [
+            0
+        ]
+    },
+    "(Debra VanHouten) Lean On Me \u2013 Bill Withers (Solo).mid": {
+        "tracks": [
+            0
+        ],
+        "speed": 1.0
+    },
+    "(Klaus Lightsbane) Ariana Grande - 7 Rings.mid": {
+        "tracks": [
+            1
+        ],
+        "speed": 1.0
     }
 }

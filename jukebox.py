@@ -21,7 +21,7 @@ CONFIG = {
     
     # Input Tuning
     "note_hold_time": 0,          
-    "chord_strum_delay": 0.002,
+    "chord_strum_delay": 0,
     
     # Controls
     "speed_step": 0.1,            
@@ -51,6 +51,7 @@ state = {
     "playback_speed": 1.0,
     "manual_track_indices": None, 
     "resume_seek_seconds": 0.0,
+    "resume_seek_percent": 0.0,
     
     # Persistence
     "track_db": {}, 
@@ -198,11 +199,11 @@ def handle_focus_state():
 def next_song():
     if not state["playlist"]: return
     state["current_index"] = (state["current_index"] + 1) % len(state["playlist"])
-    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0
+    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0; state["resume_seek_percent"] = 0.0
 def prev_song():
     if not state["playlist"]: return
     state["current_index"] = (state["current_index"] - 1) % len(state["playlist"])
-    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0
+    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0; state["resume_seek_percent"] = 0.0
 
 def toggle_pause(): state["paused"] = not state["paused"]
 def toggle_mute(): state["muted"] = not state["muted"]
@@ -390,6 +391,7 @@ def run_selection_menu():
                 state["current_index"] = int(si) - 1
                 state["restart_flag"] = True
                 state["resume_seek_seconds"] = 0.0
+                state["resume_seek_percent"] = 0.0
                 state["manual_track_indices"] = None
             else:
                 print("Selection Cancelled.")
@@ -432,7 +434,6 @@ def wait_for_playback(real_wait, accumulated_time, total_duration):
         
         # Update UI & Sleep
         update_dashboard(accumulated_time, total_duration)
-        time.sleep(0.1)
 
 def playback_worker():
     while state["running"]:
@@ -504,12 +505,22 @@ def playback_worker():
         total_duration = mido.tick2second(last_note_tick, mid.ticks_per_beat, tempo)
         accumulated_time = 0.0
 
+        # --- RESTORE SEEK PERCENTAGE ---
+        if state["resume_seek_percent"] > 0.0:
+            state["resume_seek_seconds"] = total_duration * state["resume_seek_percent"]
+            state["resume_seek_percent"] = 0.0
+
         for t in sorted_times:
             if state["restart_flag"] or not state["running"]: break
             
             # --- SYNC POINT for Mixer ---
             if state["request_track_mixer"]:
-                state["resume_seek_seconds"] = accumulated_time
+                # Save position as PERCENTAGE to handle duration changes
+                if total_duration > 0:
+                    state["resume_seek_percent"] = accumulated_time / total_duration
+                else:
+                    state["resume_seek_percent"] = 0.0
+                
                 state["mixer_ready_event"].clear()
                 while state["request_track_mixer"] and state["running"]:
                     state["mixer_ready_event"].wait(timeout=0.1)
@@ -521,7 +532,6 @@ def playback_worker():
             # We must check this BEFORE playing notes, even if delta_ticks is 0
             while state["paused"]:
                 update_dashboard(accumulated_time, total_duration)
-                time.sleep(0.1)
                 if state["restart_flag"] or state["request_track_mixer"]: break
                 if check_seek_keys(accumulated_time, total_duration): break
             
