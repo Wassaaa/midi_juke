@@ -43,6 +43,7 @@ state = {
     "request_selection": False,   
     "request_track_mixer": False, 
     "mixer_ready_event": threading.Event(),
+    "player_ready_for_mixer": threading.Event(), 
     
     # Playback Data
     "current_index": 0,
@@ -50,8 +51,9 @@ state = {
     "current_folder_name": "ALL", 
     "playback_speed": 1.0,
     "manual_track_indices": None, 
-    "resume_seek_seconds": 0.0,
-    "resume_seek_percent": 0.0,
+    
+    # REPLACED: seek_seconds/percent with Ticks for precision
+    "resume_from_tick": 0,
     
     # Persistence
     "track_db": {}, 
@@ -170,16 +172,6 @@ def get_game_hwnd():
         if CONFIG["window_title"].lower() in title.lower(): return hwnd
     return None
 
-def focus_game_window():
-    hwnd = get_game_hwnd()
-    if hwnd:
-        try:
-            if win32gui.IsIconic(hwnd): win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-            win32gui.SetForegroundWindow(hwnd)
-            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-        except: pass
-
 def minimize_game_window():
     hwnd = get_game_hwnd()
     if hwnd:
@@ -190,6 +182,7 @@ def handle_focus_state():
     try:
         hwnd = win32gui.GetForegroundWindow()
         title = win32gui.GetWindowText(hwnd)
+        # Just a check (logic can be expanded if needed)
         is_focused = CONFIG["window_title"].lower() in title.lower()
     except: pass
 
@@ -199,11 +192,11 @@ def handle_focus_state():
 def next_song():
     if not state["playlist"]: return
     state["current_index"] = (state["current_index"] + 1) % len(state["playlist"])
-    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0; state["resume_seek_percent"] = 0.0
+    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_from_tick"] = 0
 def prev_song():
     if not state["playlist"]: return
     state["current_index"] = (state["current_index"] - 1) % len(state["playlist"])
-    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_seek_seconds"] = 0.0; state["resume_seek_percent"] = 0.0
+    state["restart_flag"] = True; state["manual_track_indices"] = None; state["resume_from_tick"] = 0
 
 def toggle_pause(): state["paused"] = not state["paused"]
 def toggle_mute(): state["muted"] = not state["muted"]
@@ -257,7 +250,7 @@ def print_dashboard():
     sys.stdout.flush()
 
 # ============================================================================
-# 8. FILE & TRACK LOGIC
+# 8. FILE & TRACK LOGIC (REFACTORED)
 # ============================================================================
 def get_subfolders():
     if not os.path.exists(CONFIG["midi_root"]): os.makedirs(CONFIG["midi_root"])
@@ -290,10 +283,82 @@ def get_track_info(mid):
         if note_count > 0: info.append({'index': i, 'name': track.name.strip(), 'notes': note_count, 'inst': instrument, 'drum': is_drum})
     return info
 
+def prepare_midi_data(full_path, manual_indices=None):
+    """
+    Refactored helper to parse MIDI, select tracks, and build the timeline.
+    Returns: (mido_obj, events_dict, total_duration_sec, active_tracks_count, total_playable_tracks, tempo)
+    """
+    try:
+        mid = mido.MidiFile(full_path)
+    except:
+        return None, None, 0, 0, 0, 500000
+
+    # 1. Determine Tracks to Play
+    fname = os.path.basename(full_path)
+    indices = []
+    track_source_name = "Auto"
+    
+    if manual_indices:
+        indices = manual_indices
+        track_source_name = "Manual"
+    elif fname in state["track_db"]:
+        data = state["track_db"][fname]
+        if isinstance(data, dict):
+            indices = data.get("tracks", [])
+            # Update speed if saved
+            if "speed" in data: state["playback_speed"] = data["speed"]
+            track_source_name = "Saved Mix"
+        elif isinstance(data, list):
+            indices = data
+            track_source_name = "Saved Mix"
+    
+    # Fallback: Auto-select busiest track if no indices found
+    if not indices:
+        best = 0; maxn = 0
+        for i, t in enumerate(mid.tracks):
+            c = sum(1 for m in t if m.type == 'note_on' and m.velocity > 0)
+            if c > maxn: maxn, best = c, i
+        indices = [best]
+        track_source_name = f"Auto (Trk {best})"
+
+    # 2. Build Event Dictionary (Absolute Ticks -> Notes)
+    events_by_time = {}
+    total_playable_tracks = sum(1 for t in mid.tracks if sum(1 for m in t if m.type == 'note_on' and m.velocity > 0) > 0)
+    
+    for i in indices:
+        if i < len(mid.tracks):
+            track = mid.tracks[i]
+            curr_ticks = 0
+            for msg in track:
+                curr_ticks += msg.time
+                if msg.type == 'note_on' and msg.velocity > 0:
+                    if curr_ticks not in events_by_time: events_by_time[curr_ticks] = []
+                    events_by_time[curr_ticks].append(msg.note)
+
+    # 3. Calculate Meta Data
+    sorted_times = sorted(events_by_time.keys())
+    last_tick = sorted_times[-1] if sorted_times else 0
+    tempo = mido.bpm2tempo(120) # Default
+    
+    # Scan for tempo changes (simplified: takes last tempo found in track 0)
+    for msg in mid.tracks[0]:
+        if msg.type == 'set_tempo': tempo = msg.tempo
+
+    total_duration = mido.tick2second(last_tick, mid.ticks_per_beat, tempo)
+    
+    state["dashboard"]["mixer"] = f"{track_source_name} | Active: {len(indices)} / {total_playable_tracks} Tracks"
+    
+    return mid, events_by_time, total_duration, len(indices), total_playable_tracks, tempo
+
 # ============================================================================
 # 9. MENUS
 # ============================================================================
 def run_track_mixer(full_path):
+    # --- HANDSHAKE: Wait for Player to Pause & Save State ---
+    # This prevents the UI from appearing before the resume_from_tick is saved.
+    state["player_ready_for_mixer"].wait(timeout=2.0)
+    state["player_ready_for_mixer"].clear()
+    
     minimize_game_window()
     time.sleep(0.2)
     focus_terminal()
@@ -340,7 +405,6 @@ def run_track_mixer(full_path):
         state["track_db"][fname] = {}
     
     state["track_db"][fname]["tracks"] = list(selected)
-    # Preserve speed
     if "speed" not in state["track_db"][fname]:
         state["track_db"][fname]["speed"] = state["playback_speed"]
         
@@ -358,11 +422,10 @@ def run_selection_menu():
     
     os.system('cls' if os.name == 'nt' else 'clear')
     subfolders = get_subfolders()
-    print("="*50); print("       📂 PLAYLIST SELECTION"); print("="*50); print(f"[1]  🔥 ALL SONGS (Master)")
+    print("="*50); print("      📂 PLAYLIST SELECTION"); print("="*50); print(f"[1]  🔥 ALL SONGS (Master)")
     for i, folder in enumerate(subfolders): print(f"[{i+2}]  📂 {folder}")
     try:
         user_input = input("\nSelect Folder # > ")
-        # If empty input, just cancel out and do NOTHING
         if not user_input: return
         
         choice = int(user_input)
@@ -375,7 +438,6 @@ def run_selection_menu():
         else: return
 
         if temp_playlist:
-            # Show songs PREVIEW
             os.system('cls' if os.name == 'nt' else 'clear')
             print(f"--- SONGS IN: {temp_folder_name} ---")
             for i, full_path in enumerate(temp_playlist): 
@@ -384,36 +446,41 @@ def run_selection_menu():
             print("\n(Enter number to Play, or leave empty to Cancel)")
             si = input("Start Song # > ")
             
-            # ONLY commit if user actually picks a song or forces start
             if si.strip():
                 state["playlist"] = temp_playlist
                 state["current_folder_name"] = temp_folder_name
                 state["current_index"] = int(si) - 1
                 state["restart_flag"] = True
-                state["resume_seek_seconds"] = 0.0
-                state["resume_seek_percent"] = 0.0
+                state["resume_from_tick"] = 0
                 state["manual_track_indices"] = None
             else:
                 print("Selection Cancelled.")
                 time.sleep(0.5)
-                
     except: pass
 
 # ============================================================================
 # 10. PLAYBACK LOOP
 # ============================================================================
-def check_seek_keys(accumulated_time, total_duration):
+def check_seek_keys(accumulated_time, total_duration, mid, tempo):
+    """
+    Checks for PageUp/PageDown.
+    Converts the Time Seek into a Tick Seek for the main loop to handle.
+    """
+    target_sec = -1
     if keyboard.is_pressed('page down'):
-        state["resume_seek_seconds"] = min(accumulated_time + CONFIG["seek_step"], total_duration)
-        state["restart_flag"] = True
-        return True
-    if keyboard.is_pressed('page up'):
-        state["resume_seek_seconds"] = max(accumulated_time - CONFIG["seek_step"], 0.0)
+        target_sec = min(accumulated_time + CONFIG["seek_step"], total_duration)
+    elif keyboard.is_pressed('page up'):
+        target_sec = max(accumulated_time - CONFIG["seek_step"], 0.0)
+    
+    if target_sec != -1:
+        # Convert Seconds -> Ticks to ensure we resume at exact grid position
+        target_ticks = mido.second2tick(target_sec, mid.ticks_per_beat, tempo)
+        state["resume_from_tick"] = int(target_ticks)
         state["restart_flag"] = True
         return True
     return False
 
-def wait_for_playback(real_wait, accumulated_time, total_duration):
+def wait_for_playback(real_wait, accumulated_time, total_duration, mid, tempo):
     start_wait = time.time()
     while True:
         # Handle Pause
@@ -421,11 +488,11 @@ def wait_for_playback(real_wait, accumulated_time, total_duration):
             update_dashboard(accumulated_time, total_duration)
             time.sleep(0.1)
             if state["restart_flag"] or state["request_track_mixer"]: return True
-            if check_seek_keys(accumulated_time, total_duration): return True
+            if check_seek_keys(accumulated_time, total_duration, mid, tempo): return True
 
         # Check Interrupts
         if state["restart_flag"] or state["request_track_mixer"]: return True
-        if check_seek_keys(accumulated_time, total_duration): return True
+        if check_seek_keys(accumulated_time, total_duration, mid, tempo): return True
 
         # Check Time
         elapsed = time.time() - start_wait
@@ -436,146 +503,108 @@ def wait_for_playback(real_wait, accumulated_time, total_duration):
         update_dashboard(accumulated_time, total_duration)
 
 def playback_worker():
+    last_path = None
     while state["running"]:
-        # Race Condition Fix: Reset flag at START of loop, not end.
+        # Race Condition Fix: Reset flag at START of loop
         state["restart_flag"] = False
 
         if not state["playlist"]: time.sleep(1); continue
         
         full_path = state["playlist"][state["current_index"]]
-        try: mid = mido.MidiFile(full_path)
-        except: time.sleep(1); continue
-
-        events_by_time = {}; tracks_to_play = []
-        fname = os.path.basename(full_path)
-        state["dashboard"]["song"] = fname
         
-        total_playable_tracks = sum(1 for t in mid.tracks if sum(1 for m in t if m.type == 'note_on' and m.velocity > 0) > 0)
+        # --- RESET SPEED ON TRACK CHANGE ---
+        if full_path != last_path:
+            state["playback_speed"] = 1.0
+            last_path = full_path
 
-        # --- LOAD SPEED & TRACKS ---
-        state["playback_speed"] = 1.0 # Default
-        current_track_indices = []
+        state["dashboard"]["song"] = os.path.basename(full_path)
 
-        if fname in state["track_db"]:
-            data = state["track_db"][fname]
-            saved_indices = []
-            if isinstance(data, list): saved_indices = data
-            elif isinstance(data, dict):
-                saved_indices = data.get("tracks", [])
-                state["playback_speed"] = data.get("speed", 1.0)
-            
-            if not saved_indices:
-                best = 0; maxn = 0
-                for i, t in enumerate(mid.tracks):
-                    c = sum(1 for m in t if m.type == 'note_on' and m.velocity > 0)
-                    if c > maxn: maxn, best = c, i
-                current_track_indices = [best]
-                track_source_name = "Auto (Fixed)"
-            else:
-                current_track_indices = saved_indices
-                track_source_name = "Saved Mix"
-        else:
-            best = 0; maxn = 0
-            for i, t in enumerate(mid.tracks):
-                c = sum(1 for m in t if m.type == 'note_on' and m.velocity > 0)
-                if c > maxn: maxn, best = c, i
-            current_track_indices = [best]
-            track_source_name = f"Auto (Track {best})"
+        # --- PREPARE DATA (Refactored) ---
+        mid, events_by_time, total_duration, _, _, tempo = prepare_midi_data(full_path, state["manual_track_indices"])
         
-        # Build track objects
-        for i in current_track_indices:
-            if i < len(mid.tracks): tracks_to_play.append(mid.tracks[i])
-            
-        state["dashboard"]["mixer"] = f"{track_source_name} | Active: {len(tracks_to_play)} / {total_playable_tracks} Tracks"
-
-        # Merge Events
-        for track in tracks_to_play:
-            curr = 0
-            for msg in track:
-                curr += msg.time
-                if msg.type == 'note_on' and msg.velocity > 0:
-                    if curr not in events_by_time: events_by_time[curr] = []
-                    events_by_time[curr].append(msg.note)
+        if not mid or not events_by_time:
+            time.sleep(1); continue
 
         state["game_hwnd"] = get_game_hwnd()
         
         sorted_times = sorted(events_by_time.keys())
-        last_ticks = 0; tempo = mido.bpm2tempo(120)
-        last_note_tick = sorted_times[-1] if sorted_times else 0
-        total_duration = mido.tick2second(last_note_tick, mid.ticks_per_beat, tempo)
+        prev_tick = 0
+        
+        # If resuming, calculate starting time for UI
         accumulated_time = 0.0
+        if state["resume_from_tick"] > 0:
+            accumulated_time = mido.tick2second(state["resume_from_tick"], mid.ticks_per_beat, tempo)
 
-        # --- RESTORE SEEK PERCENTAGE ---
-        if state["resume_seek_percent"] > 0.0:
-            state["resume_seek_seconds"] = total_duration * state["resume_seek_percent"]
-            state["resume_seek_percent"] = 0.0
-
-        for t in sorted_times:
+        # --- TICK LOOP ---
+        for current_tick in sorted_times:
             if state["restart_flag"] or not state["running"]: break
             
-            # --- SYNC POINT for Mixer ---
+            # --- SEEKING LOGIC (The Fix) ---
+            if current_tick < state["resume_from_tick"]:
+                prev_tick = current_tick
+                continue
+            
+            # --- CRITICAL FIX: ALIGN PREV_TICK ---
+            if state["resume_from_tick"] > 0:
+                prev_tick = state["resume_from_tick"]
+                state["resume_from_tick"] = 0
+
+            # --- MIXER INTERRUPT (CHECK #1: Before Waiting) ---
             if state["request_track_mixer"]:
-                # Save position as PERCENTAGE to handle duration changes
-                if total_duration > 0:
-                    state["resume_seek_percent"] = accumulated_time / total_duration
-                else:
-                    state["resume_seek_percent"] = 0.0
-                
+                state["resume_from_tick"] = current_tick
+                state["player_ready_for_mixer"].set() 
                 state["mixer_ready_event"].clear()
                 while state["request_track_mixer"] and state["running"]:
                     state["mixer_ready_event"].wait(timeout=0.1)
-                
-                # Break loop to reload track configuration
                 break 
 
-            # --- PAUSE CHECK (Fix for "Play on Pause") ---
-            # We must check this BEFORE playing notes, even if delta_ticks is 0
-            while state["paused"]:
-                update_dashboard(accumulated_time, total_duration)
-                if state["restart_flag"] or state["request_track_mixer"]: break
-                if check_seek_keys(accumulated_time, total_duration): break
-            
-            if state["restart_flag"] or state["request_track_mixer"]: break
-
-            delta_ticks = t - last_ticks
+            # --- CALCULATE DELTA ---
+            delta_ticks = current_tick - prev_tick
             if delta_ticks > 0:
                 real_wait = mido.tick2second(delta_ticks, mid.ticks_per_beat, tempo)
                 accumulated_time += real_wait
                 
-                # --- SEEKING ---
-                if accumulated_time < state["resume_seek_seconds"]:
-                    if int(accumulated_time * 100) % 2 == 0: update_dashboard(accumulated_time, total_duration, is_seeking=True)
-                    last_ticks = t; continue 
+                # --- WAIT (Handles Speed/Pause/Input) ---
+                if accumulated_time < state["resume_from_tick"]: # Visual seek only
+                     if int(accumulated_time * 100) % 2 == 0: 
+                         update_dashboard(accumulated_time, total_duration, is_seeking=True)
+                else:
+                    interrupted = wait_for_playback(real_wait, accumulated_time, total_duration, mid, tempo)
+                    
+                    # --- MIXER INTERRUPT (CHECK #2: After Waiting) ---
+                    # Crucial Fix: If interrupted by mixer while sleeping, save position NOW.
+                    if interrupted and state["request_track_mixer"]:
+                         state["resume_from_tick"] = current_tick
+                         state["player_ready_for_mixer"].set()
+                         state["mixer_ready_event"].clear()
+                         while state["request_track_mixer"] and state["running"]:
+                             state["mixer_ready_event"].wait(timeout=0.1)
+                         break
 
-                # --- WAIT FOR PLAYBACK (Handles Pause, Speed, Interrupts) ---
-                interrupted = wait_for_playback(real_wait, accumulated_time, total_duration)
-                if interrupted: break
+                    if interrupted: break
 
             # --- PLAY NOTES ---
-            for note in events_by_time[t]:
-                if note in NOTE_MAP:
-                    if not state["muted"]:
-                        mod, key = NOTE_MAP[note]
-                        press_atomic(mod, key)
-                        if CONFIG["chord_strum_delay"] > 0: time.sleep(CONFIG["chord_strum_delay"])
-            last_ticks = t
+            for note in events_by_time[current_tick]:
+                if note in NOTE_MAP and not state["muted"]:
+                    mod, key = NOTE_MAP[note]
+                    press_atomic(mod, key)
+                    if CONFIG["chord_strum_delay"] > 0: time.sleep(CONFIG["chord_strum_delay"])
+            
+            prev_tick = current_tick
         
+        # --- END OF SONG ---
         if not state["restart_flag"] and not state["request_track_mixer"] and state["running"]:
-             state["resume_seek_seconds"] = 0.0
+             state["resume_from_tick"] = 0
              if not state["looping"]: next_song()
              time.sleep(1)
         
-        # Save speed changes
+        # Save speed changes if any occurred
         if state["playback_speed"] != 1.0:
-             if fname not in state["track_db"] or isinstance(state["track_db"][fname], list):
-                 state["track_db"][fname] = {}
-             
-             state["track_db"][fname]["speed"] = state["playback_speed"]
-             
-             if "tracks" not in state["track_db"][fname] or not state["track_db"][fname]["tracks"]:
-                 state["track_db"][fname]["tracks"] = current_track_indices
-             
-             save_track_db()
+            fname = os.path.basename(full_path)
+            if fname not in state["track_db"]: state["track_db"][fname] = {}
+            if isinstance(state["track_db"][fname], dict):
+                state["track_db"][fname]["speed"] = state["playback_speed"]
+            save_track_db()
 
 def main():
     os.system("") 
