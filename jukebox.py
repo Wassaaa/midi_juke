@@ -26,6 +26,7 @@ CONFIG = {
     # Controls
     "speed_step": 0.1,            
     "seek_step": 10.0,
+    "fine_seek_step": 1.0,
 }
 
 # ============================================================================
@@ -42,6 +43,7 @@ state = {
     "restart_flag": False,        
     "request_selection": False,   
     "request_track_mixer": False, 
+    "seek_request": None,
     "mixer_ready_event": threading.Event(),
     "player_ready_for_mixer": threading.Event(), 
     
@@ -154,16 +156,6 @@ def press_atomic(modifier, key_char):
 # ============================================================================
 # 5. WINDOW & FOCUS
 # ============================================================================
-def focus_terminal():
-    try:
-        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        if hwnd: 
-            if win32gui.IsIconic(hwnd): win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-            win32gui.SetForegroundWindow(hwnd)
-            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0, win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-    except: pass
-
 def get_game_hwnd():
     toplist = []; 
     def enum_win(hwnd, result): toplist.append((hwnd, win32gui.GetWindowText(hwnd)))
@@ -171,20 +163,6 @@ def get_game_hwnd():
     for (hwnd, title) in toplist:
         if CONFIG["window_title"].lower() in title.lower(): return hwnd
     return None
-
-def minimize_game_window():
-    hwnd = get_game_hwnd()
-    if hwnd:
-        try: win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
-        except: pass
-
-def handle_focus_state():
-    try:
-        hwnd = win32gui.GetForegroundWindow()
-        title = win32gui.GetWindowText(hwnd)
-        # Just a check (logic can be expanded if needed)
-        is_focused = CONFIG["window_title"].lower() in title.lower()
-    except: pass
 
 # ============================================================================
 # 6. HOTKEYS & CONTROLS
@@ -206,11 +184,19 @@ def trigger_menu(): state["request_selection"] = True
 def trigger_mixer(): state["request_track_mixer"] = True
 def speed_up(): state["playback_speed"] = min(state["playback_speed"] + CONFIG["speed_step"], 10.0)
 def speed_down(): state["playback_speed"] = max(state["playback_speed"] - CONFIG["speed_step"], 0.1)
+def seek_forward(): state["seek_request"] = "forward"
+def seek_backward(): state["seek_request"] = "backward"
+def fine_seek_forward(): state["seek_request"] = "fine_forward"
+def fine_seek_backward(): state["seek_request"] = "fine_backward"
 
 keyboard.add_hotkey('right', next_song)
 keyboard.add_hotkey('left', prev_song)
 keyboard.add_hotkey('up', speed_up)
 keyboard.add_hotkey('down', speed_down)
+keyboard.add_hotkey('page down', seek_forward)
+keyboard.add_hotkey('page up', seek_backward)
+keyboard.add_hotkey('end', fine_seek_forward)
+keyboard.add_hotkey('home', fine_seek_backward)
 keyboard.add_hotkey('F3', toggle_pause)
 keyboard.add_hotkey('F4', stop_script)
 keyboard.add_hotkey('F5', trigger_menu)
@@ -359,11 +345,6 @@ def run_track_mixer(full_path):
     state["player_ready_for_mixer"].wait(timeout=2.0)
     state["player_ready_for_mixer"].clear()
     
-    minimize_game_window()
-    time.sleep(0.2)
-    focus_terminal()
-    time.sleep(0.2)
-    
     try: mid = mido.MidiFile(full_path)
     except: return
     
@@ -415,11 +396,6 @@ def run_track_mixer(full_path):
     state["mixer_ready_event"].set()
 
 def run_selection_menu():
-    minimize_game_window()
-    time.sleep(0.2)
-    focus_terminal()
-    time.sleep(0.2)
-    
     os.system('cls' if os.name == 'nt' else 'clear')
     subfolders = get_subfolders()
     print("="*50); print("      📂 PLAYLIST SELECTION"); print("="*50); print(f"[1]  🔥 ALL SONGS (Master)")
@@ -461,23 +437,29 @@ def run_selection_menu():
 # ============================================================================
 # 10. PLAYBACK LOOP
 # ============================================================================
-def check_seek_keys(accumulated_time, total_duration, mid, tempo):
-    """
-    Checks for PageUp/PageDown.
-    Converts the Time Seek into a Tick Seek for the main loop to handle.
-    """
+def handle_seek_request(accumulated_time, total_duration, mid, tempo):
+    if not state["seek_request"]: return False
+
     target_sec = -1
-    if keyboard.is_pressed('page down'):
-        target_sec = min(accumulated_time + CONFIG["seek_step"], total_duration)
-    elif keyboard.is_pressed('page up'):
-        target_sec = max(accumulated_time - CONFIG["seek_step"], 0.0)
+    request = state["seek_request"]
     
+    if request == "forward":
+        target_sec = min(accumulated_time + CONFIG["seek_step"], total_duration)
+    elif request == "backward":
+        target_sec = max(accumulated_time - CONFIG["seek_step"], 0.0)
+    elif request == "fine_forward":
+        target_sec = min(accumulated_time + CONFIG["fine_seek_step"], total_duration)
+    elif request == "fine_backward":
+        target_sec = max(accumulated_time - CONFIG["fine_seek_step"], 0.0)
+
     if target_sec != -1:
-        # Convert Seconds -> Ticks to ensure we resume at exact grid position
         target_ticks = mido.second2tick(target_sec, mid.ticks_per_beat, tempo)
         state["resume_from_tick"] = int(target_ticks)
         state["restart_flag"] = True
+        state["seek_request"] = None # Reset request
         return True
+        
+    state["seek_request"] = None # Reset request
     return False
 
 def wait_for_playback(real_wait, accumulated_time, total_duration, mid, tempo):
@@ -488,11 +470,11 @@ def wait_for_playback(real_wait, accumulated_time, total_duration, mid, tempo):
             update_dashboard(accumulated_time, total_duration)
             time.sleep(0.1)
             if state["restart_flag"] or state["request_track_mixer"]: return True
-            if check_seek_keys(accumulated_time, total_duration, mid, tempo): return True
+            if handle_seek_request(accumulated_time, total_duration, mid, tempo): return True
 
         # Check Interrupts
         if state["restart_flag"] or state["request_track_mixer"]: return True
-        if check_seek_keys(accumulated_time, total_duration, mid, tempo): return True
+        if handle_seek_request(accumulated_time, total_duration, mid, tempo): return True
 
         # Check Time
         elapsed = time.time() - start_wait
@@ -615,7 +597,7 @@ def main():
     t.start()
 
     print("="*80); print("🎵 JUKEBOX STARTED"); print("="*80)
-    print("⌨️  F3:Pause F4:Stop F5:Menu F6:Mute F7:Mixer F8:Loop | PgUp/Dn: Seek | Arrows: Nav")
+    print("⌨️  F3:Pause F4:Stop F5:Menu F6:Mute F7:Mixer F8:Loop | PgUp/Dn: Seek | Home/End: Fine Seek | Arrows: Nav")
     sys.stdout.write("\033[?25l") # Hide Cursor
 
     # Force Menu on Start
@@ -634,7 +616,6 @@ def main():
             last_song = "" 
 
         else:
-            handle_focus_state()
             curr_song = state["dashboard"]["song"]
             
             if curr_song != last_song and curr_song:
@@ -643,7 +624,7 @@ def main():
                 print("="*80); print(f"🎵 NOW PLAYING: {curr_song}")
                 print(f"🎛️  Mixer: {state['dashboard']['mixer']}"); print("="*80)
                 print("\n\n"); print("="*80)
-                print("⌨️  F3:Pause F4:Stop F5:Menu F6:Mute F7:Mixer L:Loop | PgUp/Dn: Seek | Arrows: Nav"); print("="*80)
+                print("⌨️  F3:Pause F4:Stop F5:Menu F6:Mute F7:Mixer F8:Loop | PgUp/Dn: Seek | Home/End: Fine Seek | Arrows: Nav"); print("="*80)
                 sys.stdout.write("\033[?25l"); sys.stdout.write("\033[5A") 
             
             if curr_song:

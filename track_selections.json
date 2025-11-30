@@ -51,7 +51,7 @@
             12,
             13
         ],
-        "speed": 1.4000000000000004
+        "speed": 1.1
     },
     "(Maeven Serrou) Rihanna - Umbrella.mid": [
         1,
@@ -67,7 +67,7 @@
             5,
             6
         ],
-        "speed": 1.0
+        "speed": 0.9
     },
     "(Paisa Mio) DDU DU DDU DU - Blackpink.mid": [
         0,
@@ -528,5 +528,15 @@
             1
         ],
         "speed": 1.0
+    },
+    "(Debra VanHouten) The Cranberries - Zombie (Solo).mid": {
+        "speed": 1.2000000000000002
+    },
+    "(Ayla) Shadow the Hedgehog - I Am (All of Me) (Duet).mid": {
+        "tracks": [
+            1,
+            2
+        ],
+        "speed": 0.9
     }
 }
